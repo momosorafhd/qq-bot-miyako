@@ -118,15 +118,15 @@ local\venv\Scripts\python.exe tools\setup_repro.py
 1. 检查目录结构
 2. 没有 `.env` 就从 `.env.example` 生成 → **你去填 `DEEPSEEK_API_KEY` / `ZHIPU_API_KEY`**
 3. 没有 `cmd_config.json` 就用 `cmd_config.repro.json` 生成，并把
-   `__PROJECT_ROOT__` 换成本机真实路径；已有配置则只修路径
+   `__PROJECT_ROOT__` 换成本机真实路径；已有配置修路径，并仅对已知无效`change_me`+空hash组合备份后修复
 4. 把人设写进 `data_v4.db` 的 `personas` 表（需要先启动过一次 AstrBot 建库）
 
-生成出来的 `cmd_config.json` 里有三处**占位值**需要你改：
+生成出来的 `cmd_config.json` 中需要你填写：
 
 | 字段 | 改成 |
 | --- | --- |
 | `provider_settings.websearch_deepseek_key` | 你的 DeepSeek key（联网搜索用） |
-| `dashboard.password` | 你自己的后台密码 |
+| 后台密码 | 首次启动查看AstrBot日志中的随机初始密码，登录后改密；不要把明文填进`dashboard.password` |
 | `admins_id` | 你的 QQ 号（`/reset`、`/都记忆` 等管理命令靠它） |
 
 ---
@@ -140,9 +140,9 @@ local\venv\Scripts\python.exe tools\setup_repro.py
 | 检查项 | 期望 |
 | --- | --- |
 | `tools\doctor.bat` | 全部 `✓`，0 问题 |
-| AstrBot 日志 | `[miyako_tts] 台词制语音已生效`、`[will] 意愿评估已生效`、`[mem] 群友画像已生效` |
+| AstrBot 日志 | `[miyako_tts] 台词制语音已生效`、`[will] 注意力门控已启用`、`[mem] v2启动` |
 | 群聊 @ 她 | 中文文字 + **日语语音**（语音不是机翻，带语气词） |
-| 不 @ 正常聊天 | 偶尔主动插一句（打分 ≥5 才开口，60 秒冷却） |
+| 不 @ 正常聊天 | 冷态等间隙打包判断；提到后关注180秒；允许模型继续旁听 |
 | 发图片 | 她能看到图片内容（GLM-4V-Flash） |
 | 问"最近有什么新闻" | 她会调 `web_search_deepseek` 再回答 |
 | `/都记忆`（管理员） | 返回群友画像（跑几小时才有内容） |
@@ -169,7 +169,10 @@ local\venv\Scripts\python.exe tools\setup_repro.py
 | 语音不是她的声音 | 权重路径不对 / AstrBot 启动时 9880 没起来（顺序反了） |
 | 完全没语音 | `provider_tts_settings.enable` 必须为 `false`（由 miyako_tts 接管语音） |
 | 双重回复 | `active_reply.enable` 必须为 `false`（由 willingness_gate 接管插话） |
-| 她变得很闷 | `willingness_gate/main.py` 的 `SCORE_THRESHOLD`（默认 5） |
-| 她太吵 | 同上，调到 6；或降 `CANDIDATE_RATE` |
+| 她变得很闷 | 看决策日志的对象/action/score，再检查`COLD_THRESHOLD` / `WARM_THRESHOLD`（默认7/5）及预算 |
+| 她太吵 | 调高阈值，或增加`COLD_COOLDOWN` / `WARM_COOLDOWN`，不要启用内置随机插话 |
+
+升级已有部署请先按 [AGENT_HANDOFF_2026-10-23.md](AGENT_HANDOFF_2026-10-23.md) 备份与迁移；
+特别检查旧配置的 `platform_settings.rate_limit.count=0`，避免在插件前吞掉@。
 
 更细的排障见 `启动与故障处理.md` 和 `使用文档.md`。

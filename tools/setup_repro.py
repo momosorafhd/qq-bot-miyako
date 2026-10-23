@@ -5,7 +5,7 @@
  2. 没有 .env 就从 .env.example 生成，并提示填 key
  3. 没有 cmd_config.json 就用 cmd_config.repro.json 生成，
     把其中的 __PROJECT_ROOT__ 换成本机真实路径
- 4. 已有的 cmd_config.json 只修路径，不动其他设置
+ 4. 已有配置修路径；仅对已知的无效change_me初始凭据备份后修复
  5. 人设写进数据库（需要先启动过一次 AstrBot，让它建库）
  6. 打印体检结果和下一步
 
@@ -16,8 +16,11 @@
 import io
 import json
 import os
+import shutil
 import subprocess
 import sys
+import tempfile
+import time
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 DATA = os.path.join(ROOT, "local", "AstrBot", "data")
@@ -109,23 +112,48 @@ def setup_config():
         bad("缺少 cmd_config.repro.json，无法复现调好的参数")
         return
     if not os.path.exists(CFG):
-        cfg = json.loads(io.open(REPRO, encoding="utf-8-sig").read())
+        with io.open(REPRO, encoding="utf-8-sig") as f:
+            cfg = json.load(f)
         n = patch_paths(cfg)
-        io.open(CFG, "w", encoding="utf-8-sig").write(
-            json.dumps(cfg, ensure_ascii=False, indent=2)
-        )
+        write_config(cfg)
         ok(f"已从 repro 生成 cmd_config.json（替换 {n} 处路径）")
-        warn("搜索 key / 后台密码 / 管理员 QQ 是占位值，按需在面板或 json 里改")
+        warn("首次启动从AstrBot日志取得随机初始密码，并完成改密；管理员QQ/搜索key另行设置")
         return
-    cfg = json.loads(io.open(CFG, encoding="utf-8-sig").read())
+    with io.open(CFG, encoding="utf-8-sig") as f:
+        cfg = json.load(f)
     n = patch_paths(cfg)
-    if n:
-        io.open(CFG, "w", encoding="utf-8-sig").write(
-            json.dumps(cfg, ensure_ascii=False, indent=2)
-        )
-        ok(f"已有配置，修好了 {n} 处路径")
+    repaired = repair_bootstrap_auth(cfg)
+    if repaired:
+        backup = CFG + f".pre-bootstrap-fix-{time.time_ns()}.bak"
+        shutil.copy2(CFG, backup)
+        warn("已备份原配置并修复无效change_me凭据；下次启动从日志取得随机初始密码")
+    if n or repaired:
+        write_config(cfg)
+        ok(f"已有配置，修好了 {n} 处路径" + ("及初始凭据" if repaired else ""))
     else:
         ok("已有配置，路径无需修改")
+
+
+def write_config(cfg):
+    fd, tmp = tempfile.mkstemp(dir=DATA, prefix=".config-", suffix=".tmp")
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8-sig") as f:
+            json.dump(cfg, f, ensure_ascii=False, indent=2)
+            f.flush()
+            os.fsync(f.fileno())
+        os.replace(tmp, CFG)
+    finally:
+        if os.path.exists(tmp):
+            os.remove(tmp)
+
+
+def repair_bootstrap_auth(cfg):
+    """只识别上一版模板产生的无效组合；不重置任何有效密码/hash/JWT。"""
+    dashboard = cfg.get("dashboard", {})
+    if dashboard.get("password") != "change_me" or dashboard.get("pbkdf2_password"):
+        return False
+    dashboard.update(password="", password_storage_upgraded=False, password_change_required=True)
+    return True
 
 
 def setup_persona():

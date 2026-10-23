@@ -1,4 +1,4 @@
 name: willingness_gate
-desc: 发言意愿评估：LLM 打分决定要不要接话（附决策日志便于复盘调参）
+desc: 群聊注意力与批量接话，@直通，模型可旁听并限幅调整后续阈值
 author: local
-version: 1.1.0
+version: 1.2.0

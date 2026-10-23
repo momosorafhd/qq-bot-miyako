@@ -1,4 +1,4 @@
 name: memory_distill
 desc: 群友画像（定期提炼长期记忆）+ 会话滚动摘要（超长上下文先压缩再截断）
 author: local
-version: 0.1.0
+version: 0.2.0

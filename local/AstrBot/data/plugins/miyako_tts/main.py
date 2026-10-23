@@ -23,7 +23,9 @@
 """
 
 import hashlib
+import json
 import os
+import random
 import re
 import time
 import uuid
@@ -149,7 +151,7 @@ async def _gsv_synth(ja: str, speed: str | None, ref: tuple[str, str] | None) ->
     """调 GSV /tts，返回 wav 路径。"""
     cfg = _GSV_CFG or {}
     params = {
-        k.removeprefix("gsv_"): str(v).lower()
+        k.removeprefix("gsv_"): str(v).lower() if isinstance(v, bool) else str(v)
         for k, v in (cfg.get("gsv_default_parms") or {}).items()
     }
     params["text"] = ja
@@ -163,11 +165,13 @@ async def _gsv_synth(ja: str, speed: str | None, ref: tuple[str, str] | None) ->
         params["speed_factor"] = speed
 
     base = str(cfg.get("api_base", "http://127.0.0.1:9880")).rstrip("/")
-    cache_key = hashlib.sha1(
-        (ja + "|" + str(speed) + "|" + str(params.get("ref_audio_path"))).encode()
-    ).hexdigest()
-    if cache_key in _TTS_CACHE:
+    cache_key = hashlib.sha1(json.dumps({
+        "base": base, "params": params, "gpt": cfg.get("gpt_weights_path"),
+        "sovits": cfg.get("sovits_weights_path"),
+    }, sort_keys=True, ensure_ascii=False).encode()).hexdigest()
+    if cache_key in _TTS_CACHE and os.path.exists(_TTS_CACHE[cache_key]):
         return _TTS_CACHE[cache_key]
+    _TTS_CACHE.pop(cache_key, None)
 
     timeout = aiohttp.ClientTimeout(total=SYNTH_TIMEOUT)
     async with aiohttp.ClientSession(timeout=timeout) as session:
@@ -189,17 +193,18 @@ async def _gsv_synth(ja: str, speed: str | None, ref: tuple[str, str] | None) ->
     return path
 
 
-async def _fallback_translate(text: str) -> str:
+async def _fallback_translate(text: str, umo=None) -> str:
     """模型没写台词时的兜底：LLM 翻译（有翻译腔，但保证有声音）。"""
     text = (text or "").strip()
     if not text or _has_kana(text):
         return text
     try:
-        provider = _CTX.get_using_provider() if _CTX else None
+        provider = await _CTX.get_using_provider_async(umo) if _CTX else None
         if not provider:
             return text
         resp = await provider.text_chat(
-            prompt=text[:300], system_prompt=FALLBACK_TRANSLATE_PROMPT, contexts=[]
+            prompt=text[:300], system_prompt=FALLBACK_TRANSLATE_PROMPT, contexts=[],
+            persist=False, session_id=uuid.uuid4().hex,
         )
         ja = (resp.completion_text or "").strip().strip("「」")
         return ja if _has_kana(ja) else text
@@ -229,6 +234,13 @@ class MiyakoGSVTTS(ProviderGSVTTS):
 
 # ---------------- 插件主体 ----------------
 
+def _voice_enabled(event):
+    enabled = event.get_extra("_miyako_voice_enabled", None)
+    if enabled is None:
+        enabled = random.random() < VOICE_RATE
+        event.set_extra("_miyako_voice_enabled", enabled)
+    return enabled
+
 class Main(star.Star):
     def __init__(self, context: star.Context) -> None:
         global _CTX
@@ -243,6 +255,8 @@ class Main(star.Star):
     # 1) 生成前：追加台词格式要求
     @filter.on_llm_request()
     async def ask_for_line(self, event: AstrMessageEvent, req) -> None:
+        if not _voice_enabled(event):
+            return  # 请求前决定，未选语音就不生成额外日文token
         try:
             req.extra_user_content_parts.append(
                 TextPart(text=LINE_PROMPT).mark_as_temp(),
@@ -276,17 +290,13 @@ class Main(star.Star):
                 comp.text = JA_FRAGMENT_RE.sub("", comp.text).replace("\n\n\n", "\n\n").strip()
                 body_text += comp.text
 
+        if not _voice_enabled(event):
+            return
         ja = event.get_extra("_miyako_ja")
         if not ja and body_text:
-            ja = await _fallback_translate(body_text)
+            ja = await _fallback_translate(body_text, event.unified_msg_origin)
         if not ja or not _has_kana(ja):
             return
-        if VOICE_RATE < 1.0:
-            import random
-
-            if random.random() > VOICE_RATE:
-                return
-
         emo = _pick_emotion(body_text or ja)
         try:
             path = await _gsv_synth(

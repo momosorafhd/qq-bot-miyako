@@ -4,7 +4,7 @@
     "unique_session": false,
     "rate_limit": {
       "time": 60,
-      "count": 120,
+      "count": 0,
       "strategy": "discard"
     },
     "reply_prefix": "",
@@ -299,10 +299,10 @@
   "dashboard": {
     "enable": true,
     "username": "astrbot",
-    "password": "change_me",
+    "password": "",
     "pbkdf2_password": "",
-    "password_storage_upgraded": true,
-    "password_change_required": false,
+    "password_storage_upgraded": false,
+    "password_change_required": true,
     "jwt_secret": "",
     "host": "127.0.0.1",
     "port": 6185,

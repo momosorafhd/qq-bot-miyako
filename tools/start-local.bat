@@ -15,11 +15,9 @@ set "ALL_PROXY="
 rem ---------- read .env ----------
 set "DEEPSEEK_KEY="
 set "NAPCAT_TOKEN="
-set "DASH_PWD="
 set "ZHIPU_KEY="
 for /f "usebackq tokens=1,* delims==" %%A in (`findstr /b /c:"DEEPSEEK_API_KEY=" ".env"`) do set "DEEPSEEK_KEY=%%B"
 for /f "usebackq tokens=1,* delims==" %%A in (`findstr /b /c:"NAPCAT_WEBUI_TOKEN=" ".env"`) do set "NAPCAT_TOKEN=%%B"
-for /f "usebackq tokens=1,* delims==" %%A in (`findstr /b /c:"ASTRBOT_DASHBOARD_PASSWORD=" ".env"`) do set "DASH_PWD=%%B"
 for /f "usebackq tokens=1,* delims==" %%A in (`findstr /b /c:"ZHIPU_API_KEY=" ".env"`) do set "ZHIPU_KEY=%%B"
 
 rem Strip trailing spaces from the key. A trailing space makes the Authorization
@@ -95,7 +93,7 @@ echo.
 echo ==========================================
 echo   AstrBot WebUI : http://127.0.0.1:6185
 echo     user  astrbot
-echo     pass  !DASH_PWD!
+echo     pass  See AstrBot startup log for the initial password.
 echo.
 echo   NapCat WebUI  : http://127.0.0.1:6099
 echo     token !NAPCAT_TOKEN!

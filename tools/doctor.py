@@ -93,20 +93,36 @@ def check_cfg():
     add(OK if has_qq else WARN, "管理员 QQ", f"{admins}" + ("" if has_qq else "（没有QQ号，/reset 用不了）"))
 
     rl = d.get("platform_settings", {}).get("rate_limit", {})
-    add(OK if rl.get("strategy") == "discard" else WARN, "限流策略",
-        f"{rl.get('count')}/{rl.get('time')}s {rl.get('strategy')}")
+    add(OK if rl.get("count", 0) <= 0 else WARN, "入站限流",
+        "关闭；主动回复由注意力门控控制" if rl.get("count", 0) <= 0
+        else f"{rl.get('count')}/{rl.get('time')}s {rl.get('strategy')}：会丢弃或延迟@和旁听消息，建议count=0")
 
     ar = ltm.get("active_reply", {})
     ar_enabled = ar.get("enable", False)
     will_installed = os.path.isdir(os.path.join(PLUGINS, "willingness_gate"))
     if not ar_enabled and will_installed:
-        add(OK, "主动插话", "意愿评估版（willingness_gate）")
+        add(OK, "主动插话", "注意力与批量对象判断（willingness_gate）")
     elif ar_enabled:
-        add(OK, "主动插话", f"内置随机 {int(ar.get('possibility_reply', 0) * 100)}%")
+        add(WARN if will_installed else OK, "主动插话", "请关闭内置active_reply，交由注意力门控" if will_installed
+            else f"内置随机 {int(ar.get('possibility_reply', 0) * 100)}%")
     else:
         add(WARN, "主动插话", "已关闭（且未装 willingness_gate）")
 
     ps = d.get("provider_settings", {})
+    dashboard = d.get("dashboard", {})
+    if dashboard.get("password") == "change_me" and not dashboard.get("pbkdf2_password"):
+        add(BAD, "后台初始凭据", "无效模板凭据；停服后重跑setup_repro.py，备份后修复")
+    mem_state = os.path.join(PLUGINS, "memory_distill", "data", "state.v2.json")
+    old_memory = os.path.join(PLUGINS, "memory_distill", "data", "profiles.json")
+    if os.path.exists(mem_state):
+        try:
+            state = json.load(io.open(mem_state, encoding="utf-8-sig"))
+            legacy = state.get("legacy_profiles", {})
+            add(WARN if legacy else OK, "记忆迁移", f"{len(legacy)}份旧昵称画像等待管理员明确绑定" if legacy else "v2画像已启用")
+        except (OSError, ValueError, AttributeError):
+            add(BAD, "记忆状态", "v2状态不可读，保留文件后检查，不要删除重建")
+    elif os.path.exists(old_memory):
+        add(WARN, "记忆迁移", "升级后旧画像只保留待绑定，参见AGENT_HANDOFF_2026-10-23.md")
     if ps.get("web_search"):
         prov = ps.get("websearch_provider", "?")
         keys = ps.get(f"websearch_{prov}_key") or []

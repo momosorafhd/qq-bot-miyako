@@ -18,8 +18,8 @@ NapCatQQ + AstrBot + DeepSeek，跑在 Windows 本机。
 | 能力 | 实现 |
 | --- | --- |
 | 群聊人格 | 卡片式人设（散文 + 10 组示例对话），比规则清单更少 OOC |
-| 主动插话 | `willingness_gate`：LLM 打分 0-10，≥5 才开口，附决策日志可复盘 |
-| 长期记忆 | `memory_distill`：群友画像（分类 + 纠错）+ 超长会话滚动摘要 |
+| 主动插话 | `willingness_gate`：@直通；冷时批量听，提到后关注3分钟；模型可旁听并调整后续阈值 |
+| 长期记忆 | `memory_distill`：按群与QQ号归属、带原话来源的画像 + 合并摘要；失败保留待办 |
 | 语音 | `miyako_tts`：**台词制**——LLM 生成时直接产出日语台词，不是机翻 |
 | 看图片/视频 | `caption_filter`：GLM-4V-Flash，视频用 ffmpeg 抽帧 |
 | 表情包库 | `sticker_pack`：只存活跃群友的，超量随机淘汰 |
@@ -111,7 +111,7 @@ QQ 已经在跑的话第 3 步可以跳过 —— NapCat 断线会自己重连�
 | 操作 | 预期 |
 | --- | --- |
 | 发 `@九条都 在吗` | 几秒内回复，语气软、爱道歉 |
-| 不 @ 她，正常聊天 | 约 10% 概率自己插一句，插完就退回去 |
+| 不 @ 她，正常聊天 | 等一个间隙批量判断，可以接一句，也可以继续旁听 |
 | 群里吵架 / 发通知 | 不插嘴（人设里写死了） |
 | 发 `/reset` | 清空当前群上下文，人格不变（**需要管理员**，见下） |
 | 发 `/help` | 列出可用指令 |
@@ -124,7 +124,7 @@ QQ 已经在跑的话第 3 步可以跳过 —— NapCat 断线会自己重连�
 
 空格不用担心：`/reset`、` /reset`、`/ reset` 三种写法都能识别，AstrBot 会先 strip 再匹配前缀。
 
-AstrBot 后台 `http://127.0.0.1:6185`，账号 `astrbot`，密码见 `.env` 的 `ASTRBOT_DASHBOARD_PASSWORD`。
+AstrBot 后台 `http://127.0.0.1:6185`，账号 `astrbot`。新部署从首次启动日志取得随机初始密码，登录后改密；`.env` 中的旧 `ASTRBOT_DASHBOARD_PASSWORD` 不会设置后台密码。
 NapCat 后台 `http://127.0.0.1:6099`，token 见 `.env` 的 `NAPCAT_WEBUI_TOKEN`。
 
 ---
@@ -135,10 +135,11 @@ NapCat 后台 `http://127.0.0.1:6099`，token 见 `.env` 的 `NAPCAT_WEBUI_TOKEN
 
 | 想改什么 | 改哪里 | 字段 |
 | --- | --- | --- |
-| 插话频率 | 后台 → 配置，或 `local/AstrBot/data/cmd_config.json` | `provider_ltm_settings.active_reply.possibility_reply`（默认 `0.05`） |
-| 防刷屏上限 | 同上 | `platform_settings.rate_limit`（`count:10 / time:60 / discard`，见下） |
-| 关掉自动插话 | 同上 | `active_reply.enable` → `false` |
-| 只让某些群插话 | 同上 | `active_reply.whitelist` 填群号；**留空 = 所有群** |
+| 插话节奏、阈值 | `local/AstrBot/data/plugins/willingness_gate/main.py` | `COLD_*` / `WARM_*`；默认批量等待10秒/1.5秒、阈值7/5 |
+| 意图调用预算 | 同上 | `MAX_EVALUATIONS_PER_MINUTE=6`，仅限制主动判断，不限制@ |
+| 关掉自动插话 | 同上 | `ENABLED=False`；内置`active_reply.enable`始终保持false |
+| 只让某些群插话 | 同上 | `GROUP_WHITELIST` 填群号或UMO；空表示平台总白名单内所有群 |
+| 入站限流 | 后台或 `local/AstrBot/data/cmd_config.json` | `platform_settings.rate_limit.count=0`，避免吞掉@和观察材料 |
 | 喂给模型的群聊上下文条数 | 同上 | `group_message_max_cnt`（默认 `50`） |
 | 一次记住多少轮对话 | 同上 | `agent_runner.config.compression.max_turns`（默认 `24`） |
 | 换模型 | 同上 | `provider[0].model`，可选 `deepseek-flash` / `deepseek-v4-pro` |
@@ -150,30 +151,27 @@ NapCat 后台 `http://127.0.0.1:6099`，token 见 `.env` 的 `NAPCAT_WEBUI_TOKEN
 
 ### 插话频率怎么定
 
-`possibility_reply` 是**每条群消息**触发她开口的概率，不是按时间算的。所以群越活跃，她说话越密：
+由 `willingness_gate` 统一管理，不再逐条随机抽样。没人提到她时，等10秒安静间隔后评估；
+连续聊天最多积累30秒。提到昵称或@后关注180秒，安静间隔缩到1.5秒、连续批次上限6秒。
+冷态多人热聊会缩短批次上限，但提高接话难度，避免把人类聊天热度误当成邀请。
 
-| 群里一小时大概多少条 | 建议值 | 大概多久插一句 |
-| --- | --- | --- |
-| 30 条以内（安静群） | `0.10` | 十来分钟一次 |
-| 30–80 条（正常群） | `0.05`（当前） | 十分钟上下 |
-| 100 条以上（刷屏群） | `0.02`～`0.03` | 半小时一次 |
-
-觉得她太吵就调小，太哑就调大。改完重启 AstrBot。
+模型先判断 `bot/other/public/unclear`，再决定 `reply/listen`；只有对象合适且分数达到本轮阈值才生成。
+它可建议后续阈值，每次最多改1分，限4–9，120秒后回落。实际回复后冷却45秒（冷态）/12秒（关注态）。
+模型在生成阶段仍可选择继续旁听。显式@或引用她走原生回复，越过这些主动门控。
+这些分数是策略信号，尚无真实群聊准确率；参数及验收方法见[交接文档](AGENT_HANDOFF_2026-10-23.md)。
 
 ### 防刷屏
 
-`platform_settings.rate_limit` 限制**每个会话每分钟最多回几条**：
+`platform_settings.rate_limit` 统计每个会话的**入站事件**，早于插件与群上下文记录：
 
 ```
-count: 10     一分钟最多 10 条
+count: 0      关闭入站丢弃；主动插话另有冷却和调用预算
 time: 60      窗口 60 秒
 strategy: discard
 ```
 
-`discard` 是超了就直接丢掉，不是排队。AstrBot 默认是 `stall`——那种情况下列表会阻塞等待，
-一旦有人刷屏 @ 她，就会变成延迟之后一次性哗啦啦回一串，比不回还怪。
-
-10 条/分钟对正常群聊绰绰有余，只有病态刷屏才会触发。真要放开就改成 `count: 0`（等于关闭）。
+`discard` 超额会丢掉整条入站消息，包括@；`stall`会延迟处理。复现模板关闭这层限流，
+已有配置需自行检查，`doctor.py` 会提示。保持平台总白名单，仅接入目标群。
 
 ### 人设现在有两个版本
 
@@ -659,7 +657,7 @@ qq-bot/
 │   ├─ voice-screener.bat    训练集筛选（拖文件夹进去）
 │   ├─ toggle-thinking.bat   切换思考模式
 │   └─ voice_status.py       9880 探针（给批处理用）
-├─ .env                      API Key / 密码 / 端口，只有这里要手填
+├─ .env                      API Key / NapCat token / 端口；后台初始密码看启动日志
 ├─ persona\                  九条都-群聊人设.md + 九条都-设定速查.md
 ├─ voice\                    语音资源
 │   ├─ weights\              SoVITS(.pth) + GPT(.ckpt)
@@ -682,16 +680,16 @@ qq-bot/
 
 ## 六、费用
 
-`deepseek-flash` 关思考模式，按 1M token 计价（美元，错峰价）：
+费用取决于主对话、意图判断、画像提炼、摘要、视觉与兜底翻译的总调用量，
+以及当期模型单价、缓存命中和输出长度；不能仅凭人设长度估算月费。
 
-| | 缓存命中输入 | 缓存未命中输入 | 输出 |
-| --- | --- | --- | --- |
-| 错峰 | $0.003 | $0.15 | $0.6 |
-| 高峰 | 约 2 倍 | 约 2 倍 | 约 2 倍 |
+意图请求最多每群每分钟6次，消息先合批；`SCORE_PROVIDER_ID` 可单独选择模型。
+画像与摘要可通过 `MEMORY_PROVIDER_ID` 使用另一个模型，默认均沿用会话模型。
+画像注入上限800字符，摘要上限600字符；不发送语音的轮次不再要求生成日语台词。
+`mark_as_temp()` 只是不写持久历史，仍计入当次输入token。
 
-人设约 1000 token，命中缓存后每条消息几乎不花钱。一个 200 人的群天天灌水，一个月也就几块钱人民币。
-
-高峰时段：北京时间 09:00–12:00、14:00–18:00。
+查看插件data目录的 `willingness_gate/decisions.jsonl` 和 `memory_distill/calls.jsonl`，
+可得到对应调用的实际usage，供应商未返回时记null。完整费用还应结合框架主调用记录和供应商账单。
 
 ---
 
@@ -756,7 +754,7 @@ cd local\AstrBot
 | QQ 提示版本更新 | **别更新**。NapCat 只认兼容表里的版本，跳版本大概率炸 |
 | AstrBot 起来了但群里没反应 | 看 AstrBot 窗口有没有 `connected`；没有就是 NapCat 那边没连上，去 6099 后台看 `websocketClients` 是否启用 |
 | 回复很慢 / 带一堆思考过程 | `custom_extra_body` 被清掉了，重新加 `{"thinking":{"type":"disabled"}}` |
-| 后台登录报密码错 | 改 `.env` 不够，还要同步改 `cmd_config.json` 里的 `dashboard.pbkdf2_password`，或者后台里直接改密码 |
+| 后台登录报密码错 | `.env` 不设置此密码；新部署看初始启动日志，已设密码在后台修改。旧模板`change_me`+空hash可停服后用`setup_repro.py`备份修复 |
 | 端口被占 | 改 `.env` 的 `ASTRBOT_WS_PORT` / `ASTRBOT_PORT` / `NAPCAT_WEBUI_PORT`，同时改 `onebot11.json` 里的 `url` 和 `cmd_config.json` 里的对应端口 |
 
 ---
