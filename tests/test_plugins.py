@@ -370,6 +370,118 @@ class MemoryTests(unittest.IsolatedAsyncioTestCase):
         self.assertTrue(await self.distill())
         self.assertEqual(self.bot._state['profiles'][key]['facts'], [])
 
+    async def test_repeated_forget_keyword_is_deduplicated_and_keeps_latest_cutoff(self):
+        await self.record()
+        self.extraction()
+        await self.distill()
+        key = self.mod._key('qq:GroupMessage:A', '1')
+        for _ in range(5):
+            await self.record()
+            await collect(self.bot.cmd_forget_memory(Event('都忘掉 1 香菜')))
+        rules = self.bot._state['profiles'][key]['forgotten']
+        self.assertEqual(len(rules), 1)
+        self.assertEqual(rules[0]['keyword'], '香菜')  # 无需再存一条含香菜的完整事实正文
+        self.assertEqual(rules[0]['before_seq'], self.bot._seq)
+        self.assertTrue(await self.distill())
+        self.assertFalse(self.bot._state['profiles'][key]['facts'])
+
+    async def test_forget_all_subsumes_older_keyword_and_fact_rules(self):
+        await self.record()
+        self.extraction()
+        await self.distill()
+        await self.record()
+        await collect(self.bot.cmd_forget_memory(Event('都忘掉 1 香菜')))
+        await collect(self.bot.cmd_forget_memory(Event('都忘掉 1 全部')))
+        key = self.mod._key('qq:GroupMessage:A', '1')
+        self.assertEqual([r['keyword'] for r in self.bot._state['profiles'][key]['forgotten']], ['全部'])
+        self.assertTrue(await self.distill())
+        self.assertFalse(self.bot._state['profiles'][key]['facts'])
+
+    async def test_consumed_forget_rules_shrink_to_bounded_reminders(self):
+        await self.record()
+        self.extraction()
+        await self.distill()
+        await self.record()
+        for i in range(12):
+            await collect(self.bot.cmd_forget_memory(Event(f'都忘掉 1 旧印象{i}')))
+        key = self.mod._key('qq:GroupMessage:A', '1')
+        self.assertEqual(len(self.bot._state['profiles'][key]['forgotten']), 12)
+        self.context.provider.result = '{"updates":[]}'
+        self.assertTrue(await self.distill())
+        self.bot = self.new_bot()
+        self.assertEqual(len(self.bot._state['profiles'][key]['forgotten']), self.mod.FORGET_REMINDERS_MAX)
+
+    async def test_overflow_protects_old_sources_after_restart_and_allows_new_self_report(self):
+        self.mod.FORGET_RULES_MAX, self.mod.FORGET_REMINDERS_MAX = 3, 2
+        await self.record()
+        self.extraction()
+        await self.distill()
+        key = self.mod._key('qq:GroupMessage:A', '1')
+        await self.record(text='旧消息说我喜欢咖啡')
+        for keyword in ('咖啡', '旧印象甲', '旧印象乙', '旧印象丙', '旧印象丁'):
+            await collect(self.bot.cmd_forget_memory(Event('都忘掉 1 ' + keyword)))
+        profile = self.bot._state['profiles'][key]
+        self.assertEqual(len(profile['forgotten']), 3)
+        self.assertNotIn('咖啡', [r['keyword'] for r in profile['forgotten']])
+        self.assertEqual(profile['forget_before_seq'], 2)
+        self.bot = self.new_bot()
+        await self.record(text='新的普通聊天')
+        # 即使给旧事实再挂一个新的source，也不能重新使用已封存的旧来源。
+        self.context.provider.result = json.dumps({'updates': [{'user_id': '1', 'facts': [
+            {'text': '【偏好】喜欢咖啡', 'source_ids': [2, 3]}]}]})
+        self.assertTrue(await self.distill())
+        self.assertFalse(any('咖啡' in f['text'] for f in self.bot._state['profiles'][key]['facts']))
+        await self.record(text='这是新的明确自述：我现在确实喜欢咖啡')
+        self.extraction('【偏好】喜欢咖啡')
+        self.assertTrue(await self.distill())
+        self.assertTrue(any('咖啡' in f['text'] for f in self.bot._state['profiles'][key]['facts']))
+
+    async def test_overflow_cutoff_is_scoped_to_the_forgotten_profile(self):
+        self.mod.FORGET_RULES_MAX = 2
+        for uid in ('1', '2'):
+            await self.record(user=uid)
+            self.extraction()
+            await self.distill()
+        await self.record(user='1')
+        await self.record(user='2')
+        for i in range(4):
+            await collect(self.bot.cmd_forget_memory(Event(f'都忘掉 1 旧印象{i}')))
+        self.extraction('【偏好】用户2的新资料')
+        self.assertTrue(await self.distill())
+        second = self.bot._state['profiles'][self.mod._key('qq:GroupMessage:A', '2')]
+        self.assertNotIn('forget_before_seq', second)
+        self.assertTrue(any('用户2' in f['text'] for f in second['facts']))
+
+    async def test_old_v2_unbounded_and_oversized_rules_are_compacted_on_load(self):
+        await self.record()
+        self.extraction()
+        await self.distill()
+        await self.record()
+        key = self.mod._key('qq:GroupMessage:A', '1')
+        state = copy.deepcopy(self.bot._state)
+        state['profiles'][key]['forgotten'] = [
+            {'keyword': f'旧印象{i}', 'before_seq': 2, 't': i} for i in range(100)]
+        state['profiles'][key]['forgotten'].append({'keyword': '长' * 1000, 'before_seq': 2, 't': 100})
+        path = Path(self.bot._state_path)
+        path.write_text(json.dumps(state), encoding='utf-8')
+        self.bot = self.new_bot()
+        self.assertFalse(self.bot._blocked)
+        disk = json.loads(path.read_text(encoding='utf-8'))['profiles'][key]
+        self.assertLessEqual(len(disk['forgotten']), self.mod.FORGET_RULES_MAX)
+        self.assertTrue(all(len(r['keyword']) <= self.mod.FORGET_KEYWORD_MAX_CHARS for r in disk['forgotten']))
+        self.assertEqual(disk['forget_before_seq'], 2)
+        self.assertEqual(len(self.bot._pending), 1)
+
+    async def test_overlong_forget_keyword_does_not_change_state(self):
+        await self.record()
+        self.extraction()
+        await self.distill()
+        before, epoch = Path(self.bot._state_path).read_bytes(), self.bot._epoch
+        result = await collect(self.bot.cmd_forget_memory(Event('都忘掉 1 ' + '长' * 161)))
+        self.assertIn('本次未修改', result[0])
+        self.assertEqual(Path(self.bot._state_path).read_bytes(), before)
+        self.assertEqual(self.bot._epoch, epoch)
+
     async def test_admin_edit_during_model_call_does_not_get_overwritten(self):
         await self.record()
         self.extraction()

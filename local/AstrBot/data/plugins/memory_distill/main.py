@@ -27,6 +27,9 @@ MAX_BATCHES_PER_CYCLE = 4
 DISTILL_MAX_CHARS = 8000
 EVENT_EXTRACT_MAX_CHARS = 2000  # 超长原话完整落盘，但不截半句交给事实提炼
 PROFILE_MAX_FACTS = 20
+FORGET_RULES_MAX = 64
+FORGET_REMINDERS_MAX = 4         # 已消费规则只保留少量对话提醒
+FORGET_KEYWORD_MAX_CHARS = 160
 PROFILE_STALE_DAYS = 14
 INJECT_MAX_CHARS = 800
 SUMMARY_THRESHOLD = 40
@@ -98,6 +101,8 @@ def _validate_profiles(profiles):
                 or not isinstance(p.get("user_id"), str) or key != _key(p["scope"], p["user_id"])
                 or not isinstance(p.get("facts"), list) or not isinstance(p.get("forgotten"), list)):
             raise ValueError("画像结构损坏")
+        if type(p.get("forget_before_seq", 0)) is not int or p.get("forget_before_seq", 0) < 0:
+            raise ValueError("遗忘来源截止线损坏")
         for fact in p["facts"]:
             if (not isinstance(fact, dict) or not all(isinstance(fact.get(k), str) for k in ("id", "text"))
                     or type(fact.get("updated")) not in (int, float)
@@ -106,8 +111,42 @@ def _validate_profiles(profiles):
                 raise ValueError("事实结构损坏")
         for rule in p["forgotten"]:
             if (not isinstance(rule, dict) or not isinstance(rule.get("keyword"), str)
-                    or type(rule.get("before_seq")) is not int):
+                    or type(rule.get("before_seq")) is not int or rule["before_seq"] < 0):
                 raise ValueError("撤销记录结构损坏")
+
+
+def _compact_forgotten(state):
+    """限制规则数量，但不靠丢掉仍生效的规则来解除旧来源的遗忘保护。"""
+    changed = False
+    for p in state["profiles"].values():
+        floor = p.get("forget_before_seq", 0)
+        unique = {}
+        for rule in p["forgotten"]:
+            keyword = rule["keyword"]
+            if not keyword or len(keyword) > FORGET_KEYWORD_MAX_CHARS:
+                # 兼容旧版任意长关键词；不能截成另一条语义不同的规则。
+                floor = max(floor, rule["before_seq"])
+                continue
+            previous = unique.pop(keyword, None)
+            unique[keyword] = (previous if previous and previous["before_seq"] > rule["before_seq"] else rule)
+        rules = list(unique.values())
+        all_before = unique.get("全部", {}).get("before_seq", -1)
+        rules = [r for r in rules if r["keyword"] == "全部" or r["before_seq"] > all_before]
+        # cursor之后才可能有待办；旧提醒与提炼保护共用有界列表。
+        rules = [r for i, r in enumerate(rules)
+                 if r["before_seq"] > state["cursor"] or i >= len(rules) - FORGET_REMINDERS_MAX]
+        if len(rules) > FORGET_RULES_MAX:
+            # 安全降级：被挤出的活动规则合并为来源截止线，宁可跳过更早的
+            # 同用户未处理事实，也不让已经撤销的事实因规则被裁掉而复活。
+            floor = max(floor, *(r["before_seq"] for r in rules[:-FORGET_RULES_MAX]))
+            rules = rules[-FORGET_RULES_MAX:]
+        if rules != p["forgotten"]:
+            p["forgotten"] = rules
+            changed = True
+        if floor != p.get("forget_before_seq", 0):
+            p["forget_before_seq"] = floor
+            changed = True
+    return changed
 
 
 def _text(content):
@@ -153,6 +192,8 @@ class Main(star.Star):
             if not isinstance(self._summaries, dict) or not all(isinstance(s, str) for s in self._summaries.values()):
                 raise ValueError("summaries.json不是对象")
             self._read_events()
+            if _compact_forgotten(self._state):
+                _atomic_write(self._state_path, self._state)  # 旧v2状态也收敛，保留原子落盘语义
         except (OSError, ValueError, TypeError) as exc:
             self._blocked = True
             logger.error(f"[mem] 记忆进入只读降级，保留原文件，请检查: {exc}")
@@ -226,6 +267,7 @@ class Main(star.Star):
             self._pending.append(row)
 
     def _save(self, state):
+        _compact_forgotten(state)
         _atomic_write(self._state_path, state)
         self._state = state
 
@@ -357,7 +399,7 @@ class Main(star.Star):
             p["name"] = next(r["name"] for r in reversed(batch) if r["user_id"] == uid)
             for proposal in update["facts"]:
                 text, refs = proposal["text"].strip(), proposal["source_ids"]
-                if any((rule["keyword"] == "全部" or rule["keyword"] in text)
+                if min(refs) <= p.get("forget_before_seq", 0) or any((rule["keyword"] == "全部" or rule["keyword"] in text)
                        and max(refs) <= rule["before_seq"] for rule in p.get("forgotten", [])):
                     continue
                 replacing = set(proposal.get("supersedes", []))
@@ -415,7 +457,7 @@ class Main(star.Star):
             active = time.time() - p.get("updated", 0) <= PROFILE_STALE_DAYS * 86400
             facts = sorted(p.get("facts", []) if active else [], key=lambda f: (sum(t in f["text"] for t in terms), f["updated"]), reverse=True)[:4]
             block = f"{p.get('name', uid)}(ID:{uid})：" + "；".join(f["text"] for f in facts)
-            forgotten = [r["keyword"] for r in p.get("forgotten", [])][-4:]
+            forgotten = [r["keyword"] for r in p.get("forgotten", [])][-FORGET_REMINDERS_MAX:]
             if forgotten:
                 block += "；管理员已撤销旧认知：" + "、".join(forgotten) + "（旧摘要不得恢复这些印象）"
             if (not facts and not forgotten) or total + len(block) > INJECT_MAX_CHARS:
@@ -489,6 +531,9 @@ class Main(star.Star):
         if len(arg) != 2 or self._blocked:
             yield event.plain_result("用法：/都忘掉 QQ号 关键词（或 全部）；坏库需先修复")
             return
+        if len(arg[1]) > FORGET_KEYWORD_MAX_CHARS:
+            yield event.plain_result(f"关键词最多{FORGET_KEYWORD_MAX_CHARS}字符，请缩短或使用事实ID；本次未修改。")
+            return
         async with self._lock:
             found = self._resolve(event.unified_msg_origin, arg[0])
             if found:
@@ -498,17 +543,19 @@ class Main(star.Star):
                 p["facts"] = [] if keyword == "全部" else [f for f in old if keyword not in f["text"] and keyword != f["id"]]
                 p.setdefault("forgotten", []).append({"keyword": keyword, "before_seq": self._seq, "t": time.time()})
                 for fact in old:
-                    if fact not in p["facts"]:
+                    if fact not in p["facts"] and keyword != "全部" and keyword not in fact["text"]:
                         p["forgotten"].append({"keyword": fact["text"], "before_seq": self._seq, "t": time.time()})
                 state["audit"] = (state["audit"] + [{"operation": "forget", "scope": p["scope"],
                     "user_id": p["user_id"], "old": old, "t": time.time()}])[-100:]
                 self._save(state)
                 self._epoch += 1
                 removed = len(old) - len(p["facts"])
+                sealed = p.get("forget_before_seq", 0) > found[1].get("forget_before_seq", 0)
         if not found:
             yield event.plain_result("没有唯一匹配的人；同名时请用QQ号。")
         else:
-            yield event.plain_result(f"已删除{removed}条；旧待办不会按该关键词重新记入。历史摘要需/reset另开会话。")
+            notice = "规则达到上限，较早的本用户未处理来源已保守封存，新的明确自述仍可记录。" if sealed else ""
+            yield event.plain_result(f"已删除{removed}条；旧待办不会按该关键词重新记入。{notice}历史摘要需/reset另开会话。")
 
     @filter.command("都迁移记忆")
     @filter.permission_type(filter.PermissionType.ADMIN)
