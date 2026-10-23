@@ -1,0 +1,43 @@
+services:
+  napcat:
+    image: mlikiowa/napcat-docker:latest
+    container_name: napcat
+    restart: unless-stopped
+    environment:
+      # MODE=ws 会在首次启动时自动建好 3001 端口的正向 WebSocket
+      - MODE=ws
+      - WEBUI_TOKEN=${NAPCAT_WEBUI_TOKEN:-please-change-me}
+      - NAPCAT_UID=${NAPCAT_UID:-1000}
+      - NAPCAT_GID=${NAPCAT_GID:-1000}
+      - TZ=${TZ:-Asia/Shanghai}
+    ports:
+      # 只绑本机，外网访问请走 SSH 转发或反向代理，别直接暴露
+      - "127.0.0.1:${NAPCAT_WEBUI_PORT:-6099}:6099"
+      - "127.0.0.1:${ONEBOT_WS_PORT:-3001}:3001"
+    volumes:
+      - ./napcat/config:/app/napcat/config
+      - ./napcat/qq:/app/.config/QQ
+    networks:
+      - botnet
+
+  astrbot:
+    image: soulter/astrbot:latest
+    container_name: astrbot
+    restart: unless-stopped
+    environment:
+      - TZ=${TZ:-Asia/Shanghai}
+      # 模型 Key 从这里注入，配置里用 $DEEPSEEK_API_KEY 引用
+      - DEEPSEEK_API_KEY=${DEEPSEEK_API_KEY:-}
+      - ASTRBOT_DASHBOARD_INITIAL_PASSWORD=${ASTRBOT_DASHBOARD_PASSWORD:-astrbot}
+    ports:
+      - "127.0.0.1:${ASTRBOT_PORT:-6185}:6185"
+    volumes:
+      - ./astrbot/data:/AstrBot/data
+    depends_on:
+      - napcat
+    networks:
+      - botnet
+
+networks:
+  botnet:
+    driver: bridge

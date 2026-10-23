@@ -1,0 +1,4 @@
+name: willingness_gate
+desc: 发言意愿评估：LLM 打分决定要不要接话（附决策日志便于复盘调参）
+author: local
+version: 1.1.0

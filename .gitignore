@@ -1,0 +1,65 @@
+# ---------- 密钥与个人数据（绝对不能提交）----------
+.env
+.env.*
+!.env.example
+.tk
+local/AstrBot/.astrbot
+local/AstrBot/data/cmd_config.json
+local/AstrBot/data/cmd_config.json.bak
+local/AstrBot/data/data_v4.db
+local/AstrBot/data/data_v4.db-*
+local/AstrBot/data/data_v4.db.bak*
+local/AstrBot/data/knowledge_base/
+legacy-docker/astrbot/data/
+data/cmd_config.json
+
+# ---------- 数据库（聊天记录、知识库，含隐私）----------
+*.db
+*.db-shm
+*.db-wal
+*.bak
+*.bak2
+
+# ---------- 运行时生成 ----------
+local/AstrBot/astrbot.lock
+local/AstrBot/run.log
+local/AstrBot/run_test.log
+local/AstrBot/data/logs/
+local/AstrBot/data/temp/
+data/temp/
+
+# ---------- 第三方与可再生成（体积大）----------
+local/venv/
+local/NapCatShell/
+local/onekey/
+local/onekey.zip
+local/installers/
+**/node_modules/
+
+# ---------- 模型权重（单个 150MB+，GitHub 单文件限 100MB）----------
+voice/weights/
+voice/ab_test/
+
+# ---------- 群友数据 / 表情包库 ----------
+local/AstrBot/data/plugins/sticker_pack/pool/
+local/AstrBot/data/plugins/sticker_pack/index.json
+local/AstrBot/data/plugins/memory_distill/data/
+local/AstrBot/data/plugins/willingness_gate/data/
+
+# ---------- Python ----------
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+
+# ---------- 编辑器 / 系统 ----------
+.vscode/
+.idea/
+Thumbs.db
+desktop.ini
+*.tmp
+*.bak
+
+# ---------- 第三方模板 ----------
+local/AstrBot/data/t2i_templates/
+data/t2i_templates/

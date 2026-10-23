@@ -1,0 +1,4 @@
+name: caption_filter
+desc: 只对表情包和 @ 机器人的图片生成描述，省掉无关图片的看图调用
+author: local
+version: 0.1.0

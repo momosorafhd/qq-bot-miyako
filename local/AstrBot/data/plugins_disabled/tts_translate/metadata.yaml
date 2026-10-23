@@ -1,0 +1,4 @@
+name: tts_translate
+desc: 语音用日语合成（中文先翻成日语），文字保持中文
+author: local
+version: 0.1.0

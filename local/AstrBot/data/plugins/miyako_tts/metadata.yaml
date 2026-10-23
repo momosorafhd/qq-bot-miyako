@@ -1,0 +1,4 @@
+name: miyako_tts
+desc: 官方注册的 TTS Provider：先翻日语、按情绪换参考音和语速，再交给 GPT-SoVITS
+author: local
+version: 1.0.0

@@ -1,0 +1,391 @@
+﻿{
+  "config_version": 5,
+  "platform_settings": {
+    "unique_session": false,
+    "rate_limit": {
+      "time": 60,
+      "count": 10,
+      "strategy": "discard"
+    },
+    "reply_prefix": "",
+    "forward_threshold": 1500,
+    "enable_id_white_list": true,
+    "id_whitelist": [],
+    "id_whitelist_log": true,
+    "wl_ignore_admin_on_group": true,
+    "wl_ignore_admin_on_friend": true,
+    "reply_with_mention": false,
+    "reply_with_quote": false,
+    "path_mapping": [],
+    "segmented_reply": {
+      "enable": false,
+      "only_llm_result": true,
+      "interval_method": "random",
+      "interval": "1.5,3.5",
+      "log_base": 2.6,
+      "words_count_threshold": 150,
+      "split_mode": "regex",
+      "regex": ".*?[。？！~…]+|.+$",
+      "split_words": [
+        "。",
+        "？",
+        "！",
+        "~",
+        "…"
+      ],
+      "content_cleanup_rule": ""
+    },
+    "no_permission_reply": true,
+    "empty_mention_waiting": true,
+    "empty_mention_waiting_need_reply": true,
+    "friend_message_needs_wake_prefix": false,
+    "ignore_bot_self_message": false,
+    "ignore_at_all": false
+  },
+  "provider_sources": [
+    {
+      "id": "deepseek-flash_source",
+      "provider": "deepseek",
+      "type": "openai_chat_completion",
+      "provider_type": "chat_completion",
+      "key": [
+        "$DEEPSEEK_API_KEY"
+      ],
+      "api_base": "https://api.deepseek.com/v1",
+      "timeout": 120,
+      "proxy": "",
+      "custom_headers": {}
+    },
+    {
+      "id": "zhipu_vision_source",
+      "provider": "zhipu",
+      "type": "openai_chat_completion",
+      "provider_type": "chat_completion",
+      "key": [
+        "$ZHIPU_API_KEY"
+      ],
+      "api_base": "https://open.bigmodel.cn/api/paas/v4",
+      "timeout": 60,
+      "proxy": "",
+      "custom_headers": {}
+    },
+    {
+      "id": "gsv_source",
+      "provider": "gpt_sovits",
+      "type": "miyako_gsv_tts",
+      "provider_type": "text_to_speech",
+      "api_base": "http://127.0.0.1:9880",
+      "gpt_weights_path": "<你的项目路径>\\voice\\weights\\11g-miyako-e40.ckpt",
+      "sovits_weights_path": "<你的项目路径>\\voice\\weights\\11g-miyako_e40_s3480.pth",
+      "timeout": 90,
+      "gsv_default_parms": {
+        "gsv_text_lang": "ja",
+        "gsv_prompt_lang": "ja",
+        "gsv_ref_audio_path": "E:\\氛围传输素材\\qq-bot\\voice\\ref\\miyako_ref.wav",
+        "gsv_prompt_text": "そうね。新海くんもお疲れ様。　いつもありがとう",
+        "gsv_media_type": "wav",
+        "gsv_streaming_mode": "false",
+        "gsv_top_k": "15",
+        "gsv_top_p": "1",
+        "gsv_temperature": "1",
+        "gsv_speed_factor": "1.0"
+      }
+    }
+  ],
+  "provider": [
+    {
+      "id": "deepseek-flash",
+      "enable": true,
+      "model": "deepseek-flash",
+      "custom_extra_body": {
+        "thinking": {
+          "type": "disabled"
+        }
+      },
+      "provider_source_id": "deepseek-flash_source",
+      "modalities": []
+    },
+    {
+      "id": "zhipu-vision",
+      "enable": true,
+      "model": "glm-4v-flash",
+      "provider_source_id": "zhipu_vision_source",
+      "modalities": [
+        "image"
+      ]
+    },
+    {
+      "id": "gsv-miyako",
+      "enable": true,
+      "provider_source_id": "gsv_source"
+    }
+  ],
+  "provider_settings": {
+    "enable": true,
+    "default_image_caption_provider_id": "",
+    "image_caption_prompt": "用一句中文描述这张图，供群聊聊天使用。必须用中文，不要英文。1) 表情包：画面+情绪，并把图上的文字原样抄下来，例如「柴犬歪头，字：啊？」。2) 人物：写清发色发型、瞳色、服装、动作表情。3) 如果特征和下面某位明显吻合，写出名字（同人图画风有差异，只写能对上的，对不上就只描述特征，不要猜）：九条都=棕色及腰长发、刘海垂在两眼之间、蓝眼睛、头上别着发饰；希亚=黑色及肩发、红瞳、身材很小、黑色洛丽塔裙配黑连裤袜；天=白色长发、紫瞳、左侧马尾且鬓角有小辫子、常穿橙色露脐连帽衫；春风=浅紫色双马尾长发、青色眼睛、白色制服配深蓝波点发带和彩色花瓣发夹。不超过45字，不要以「这张图片」开头。",
+    "provider_pool": [
+      "*"
+    ],
+    "wake_prefix": "",
+    "web_search": true,
+    "websearch_provider": "deepseek",
+    "websearch_tavily_key": [],
+    "websearch_bocha_key": [],
+    "websearch_brave_key": [],
+    "websearch_baidu_app_builder_key": "",
+    "websearch_firecrawl_key": [],
+    "websearch_exa_key": [],
+    "websearch_anysearch_key": [],
+    "websearch_deepseek_key": [],
+    "websearch_serpapi_key": [],
+    "web_search_link": false,
+    "display_reasoning_text": false,
+    "identifier": true,
+    "group_name_display": true,
+    "datetime_system_prompt": true,
+    "persona_pool": [
+      "*"
+    ],
+    "prompt_prefix": "{{prompt}}",
+    "streaming_response": false,
+    "show_tool_use_status": false,
+    "show_tool_call_result": false,
+    "buffer_intermediate_messages": false,
+    "max_quoted_fallback_images": 20,
+    "quoted_message_parser": {
+      "max_component_chain_depth": 4,
+      "max_forward_node_depth": 6,
+      "max_forward_fetch": 32,
+      "warn_on_action_failure": false
+    },
+    "unsupported_streaming_strategy": "realtime_segmenting",
+    "reachability_check": false,
+    "file_extract": {
+      "enable": false,
+      "provider": "moonshotai",
+      "moonshotai_api_key": ""
+    },
+    "proactive_capability": {
+      "add_cron_tools": true
+    },
+    "computer_use_runtime": "none",
+    "computer_use_local_permissions": {
+      "member": {
+        "allow_execution": false,
+        "allow_network": false,
+        "filesystem_scope": "workspace"
+      },
+      "admin": {
+        "allow_execution": true,
+        "allow_network": true,
+        "filesystem_scope": "host"
+      }
+    },
+    "computer_use_require_admin": true,
+    "sandbox": {
+      "booter": "shipyard_neo",
+      "shipyard_endpoint": "",
+      "shipyard_access_token": "",
+      "shipyard_ttl": 3600,
+      "shipyard_max_sessions": 10,
+      "shipyard_neo_endpoint": "",
+      "shipyard_neo_access_token": "",
+      "shipyard_neo_profile": "python-default",
+      "shipyard_neo_ttl": 3600,
+      "cua_image": "linux",
+      "cua_os_type": "linux",
+      "cua_idle_timeout": 0,
+      "cua_telemetry_enabled": false,
+      "cua_local": true,
+      "cua_api_key": ""
+    },
+    "image_compress_options": {
+      "max_size": 1280
+    }
+  },
+  "agent_runner": {
+    "runner_type": "local",
+    "config": {
+      "model": {
+        "provider_id": "deepseek-flash",
+        "fallback_provider_ids": [],
+        "request_max_retries": 5
+      },
+      "persona": {
+        "persona_id": "miyako",
+        "safety_mode": false,
+        "safety_mode_strategy": "system_prompt"
+      },
+      "compression": {
+        "max_turns": 24,
+        "trim_turns": 1,
+        "overflow_strategy": "llm_compress",
+        "instruction": "",
+        "keep_recent_ratio": 0.15,
+        "provider_id": "",
+        "fallback_max_tokens": 128000
+      },
+      "misc": {
+        "max_steps": 128,
+        "tool_schema_mode": "full",
+        "tool_call_timeout": 120,
+        "sanitize_context_by_modalities": false
+      }
+    }
+  },
+  "subagent_orchestrator": {
+    "main_enable": false,
+    "remove_main_duplicate_tools": false,
+    "router_system_prompt": "You are a task router. Your job is to chat naturally, recognize user intent, and delegate work to the most suitable subagent using transfer_to_* tools. Do not try to use domain tools yourself. If no subagent fits, respond directly.",
+    "agents": []
+  },
+  "provider_stt_settings": {
+    "enable": false,
+    "provider_id": ""
+  },
+  "provider_tts_settings": {
+    "enable": false,
+    "provider_id": "gsv-miyako",
+    "dual_output": true,
+    "use_file_service": false,
+    "trigger_probability": 1.0
+  },
+  "provider_ltm_settings": {
+    "group_icl_enable": true,
+    "group_message_max_cnt": 50,
+    "image_caption": true,
+    "image_caption_provider_id": "zhipu-vision",
+    "group_message_history_enable": false,
+    "group_message_history_max_cnt": 700,
+    "active_reply": {
+      "enable": false,
+      "method": "possibility_reply",
+      "possibility_reply": 0.1,
+      "whitelist": []
+    }
+  },
+  "content_safety": {
+    "also_use_in_response": false,
+    "internal_keywords": {
+      "enable": false,
+      "extra_keywords": []
+    },
+    "baidu_aip": {
+      "enable": false,
+      "app_id": "",
+      "api_key": "",
+      "secret_key": ""
+    }
+  },
+  "admins_id": [
+    "astrbot",
+    "123456789"
+  ],
+  "t2i": false,
+  "t2i_word_threshold": 150,
+  "t2i_strategy": "remote",
+  "t2i_endpoint": "",
+  "t2i_use_file_service": false,
+  "t2i_active_template": "base",
+  "http_proxy": "",
+  "no_proxy": [
+    "localhost",
+    "127.0.0.1",
+    "::1",
+    "10.*",
+    "192.168.*"
+  ],
+  "dashboard": {
+    "enable": true,
+    "username": "astrbot",
+    "password": "change_me",
+    "pbkdf2_password": "pbkdf2_sha256$600000$0f3a01e5938e28630fc0efbe9fe03498$1391305f609e94a23d8f9f2fd9ea0bc475e2fd2c23e96add5f3a68ef168e7986",
+    "password_storage_upgraded": true,
+    "password_change_required": false,
+    "jwt_secret": "4b45a9bc5cc97f1141186555751419b41717b026c6bb1737a7378345af1fc30c",
+    "host": "127.0.0.1",
+    "port": 6185,
+    "disable_access_log": true,
+    "trust_proxy_headers": false,
+    "auth_rate_limit": {
+      "enable": true,
+      "average_interval": 1.0,
+      "max_burst": 3
+    },
+    "totp": {
+      "enable": false,
+      "secret": "",
+      "recovery_code_hash": ""
+    },
+    "ssl": {
+      "enable": false,
+      "cert_file": "",
+      "key_file": "",
+      "ca_certs": ""
+    }
+  },
+  "platform": [
+    {
+      "id": "qq",
+      "type": "aiocqhttp",
+      "enable": true,
+      "ws_reverse_host": "127.0.0.1",
+      "ws_reverse_port": 6199,
+      "ws_reverse_token": ""
+    }
+  ],
+  "platform_specific": {
+    "lark": {
+      "pre_ack_emoji": {
+        "enable": false,
+        "emojis": [
+          "Typing"
+        ]
+      }
+    },
+    "telegram": {
+      "pre_ack_emoji": {
+        "enable": false,
+        "emojis": [
+          "✍️"
+        ]
+      }
+    },
+    "discord": {
+      "pre_ack_emoji": {
+        "enable": false,
+        "emojis": [
+          "🤔"
+        ]
+      }
+    }
+  },
+  "wake_prefix": [
+    "/"
+  ],
+  "log_level": "INFO",
+  "log_file_enable": false,
+  "log_file_path": "logs/astrbot.log",
+  "log_file_max_mb": 20,
+  "temp_dir_max_size": 1024,
+  "trace_enable": false,
+  "trace_log_enable": false,
+  "trace_log_path": "logs/astrbot.trace.log",
+  "trace_log_max_mb": 20,
+  "pip_install_arg": "",
+  "pypi_index_url": "https://mirrors.aliyun.com/pypi/simple/",
+  "persona": [],
+  "timezone": "Asia/Shanghai",
+  "callback_api_base": "",
+  "default_kb_collection": "",
+  "plugin_set": [
+    "*"
+  ],
+  "kb_names": [],
+  "kb_fusion_top_k": 20,
+  "kb_final_top_k": 5,
+  "kb_agentic_mode": false,
+  "disable_builtin_commands": false,
+  "disable_metrics": false
+}
