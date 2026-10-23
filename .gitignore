@@ -36,8 +36,9 @@ local/onekey.zip
 local/installers/
 **/node_modules/
 
-# ---------- 模型权重（单个 150MB+，GitHub 单文件限 100MB）----------
-voice/weights/
+# ---------- 模型权重（单个 150MB+，GitHub 单文件限 100MB，走 Releases）----------
+voice/weights/*.ckpt
+voice/weights/*.pth
 voice/ab_test/
 
 # ---------- 群友数据 / 表情包库 ----------
