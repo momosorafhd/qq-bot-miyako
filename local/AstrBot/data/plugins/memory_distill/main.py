@@ -194,13 +194,20 @@ class Main(star.Star):
 
     async def _rolling_summary(self, event, req) -> None:
         ctx = req.contexts or []
+        cid = req.conversation.cid if req.conversation else event.unified_msg_origin
+
+        # 关键：已有摘要每轮都要重新注入，否则压缩过一次之后下一轮就"失忆"了
+        if self._summaries.get(cid):
+            req.extra_user_content_parts.append(
+                TextPart(text=SUMMARY_HEADER + "\n" + self._summaries[cid]).mark_as_temp(),
+            )
+
         if len(ctx) <= SUMMARY_THRESHOLD:
             return
         old, recent = ctx[:-SUMMARY_KEEP], ctx[-SUMMARY_KEEP:]
         if len(old) < 6:
             return
 
-        cid = req.conversation.cid if req.conversation else event.unified_msg_origin
         prov = await self.context.get_using_provider_async(event.unified_msg_origin)
         if not prov:
             return
@@ -240,10 +247,13 @@ class Main(star.Star):
         while True:
             try:
                 await asyncio.sleep(DISTILL_INTERVAL)
+                self._trim_lines_file()
                 async with self._lock:
+                    # 先看够不够阈值，够了才取走；不够就留着继续攒，
+                    # 否则安静群每次少量新材料会被直接丢弃
+                    if len(self._pending) < DISTILL_MIN_LINES:
+                        continue
                     batch, self._pending = self._pending[:], []
-                if len(batch) < DISTILL_MIN_LINES:
-                    continue
                 await self._distill(batch)
             except asyncio.CancelledError:
                 return
@@ -319,7 +329,9 @@ class Main(star.Star):
     @filter.permission_type(filter.PermissionType.ADMIN)
     async def cmd_show_memory(self, event: AstrMessageEvent):
         """查看她的群友画像：/都记忆 或 /都记忆 某人"""
-        query = (event.message_str or "").strip()
+        # 框架的命令过滤器只在自己的局部变量里去掉命令名，
+        # event.message_str 仍然带着「都记忆」，所以这里手动剥掉
+        query = re.sub(r"^\s*都记忆\s*", "", event.message_str or "").strip()
         profiles = _load_json(self._profiles_path, {})
         if not profiles:
             yield event.plain_result("（她还没记住任何人的事）")
@@ -346,7 +358,7 @@ class Main(star.Star):
     @filter.permission_type(filter.PermissionType.ADMIN)
     async def cmd_forget_memory(self, event: AstrMessageEvent):
         """删掉记错的事：/都忘掉 昵称 关键词（或 /都忘掉 昵称 全部）"""
-        arg = (event.message_str or "").strip()
+        arg = re.sub(r"^\s*都忘掉\s*", "", event.message_str or "").strip()
         parts = arg.split(None, 1)
         if len(parts) < 2:
             yield event.plain_result("用法：/都忘掉 昵称 关键词")

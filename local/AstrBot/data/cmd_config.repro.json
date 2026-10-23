@@ -4,7 +4,7 @@
     "unique_session": false,
     "rate_limit": {
       "time": 60,
-      "count": 10,
+      "count": 120,
       "strategy": "discard"
     },
     "reply_prefix": "",
@@ -300,10 +300,10 @@
     "enable": true,
     "username": "astrbot",
     "password": "change_me",
-    "pbkdf2_password": "pbkdf2_sha256$600000$0f3a01e5938e28630fc0efbe9fe03498$1391305f609e94a23d8f9f2fd9ea0bc475e2fd2c23e96add5f3a68ef168e7986",
+    "pbkdf2_password": "",
     "password_storage_upgraded": true,
     "password_change_required": false,
-    "jwt_secret": "4b45a9bc5cc97f1141186555751419b41717b026c6bb1737a7378345af1fc30c",
+    "jwt_secret": "",
     "host": "127.0.0.1",
     "port": 6185,
     "disable_access_log": true,
